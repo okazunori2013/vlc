@@ -505,7 +505,7 @@ static void *satip_thread(void *data) {
         }
 
         block_cleanup_push(block);
-        len = recv(sock, block->p_buffer, RTSP_RECEIVE_BUFFER, 0);
+        len = recv(sock, (char * )block->p_buffer, RTSP_RECEIVE_BUFFER, 0);
         vlc_cleanup_pop();
 
         if (len < RTP_HEADER_SIZE) {

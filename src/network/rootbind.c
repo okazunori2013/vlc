@@ -174,7 +174,7 @@ int rootwrap_bind (int family, int socktype, int protocol,
     memcpy (&ss, addr, (alen > sizeof (ss)) ? sizeof (ss) : alen);
 
     pthread_mutex_lock (&mutex);
-    if (send (sock, &ss, sizeof (ss), MSG_NOSIGNAL) != sizeof (ss))
+    if (send (sock, (const char *)&ss, sizeof (ss), MSG_NOSIGNAL) != sizeof (ss))
     {
         pthread_mutex_unlock (&mutex);
         return -1;
