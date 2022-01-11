@@ -535,7 +535,7 @@ static int Open(vlc_object_t *p_this)
         return VLC_EGENERIC;
     }
 
-    if (!p_sys->zoomer.Configure(p_sys->i_order, true, 0))
+    if (!p_sys->zoomer.Configure(p_sys->i_order, true, AMB_BLOCK_TIME_LEN, 0))
     {
         msg_Err(p_filter, "Error creating the ambisonic zoomer.");
         delete p_sys;
