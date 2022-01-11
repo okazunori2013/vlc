@@ -438,7 +438,7 @@ static int SubpictureValidate( subpicture_t *p_subpic,
         ass_set_frame_size( p_sys->p_renderer, fmt.i_visible_width, fmt.i_visible_height );
         const double src_ratio = (double)p_fmt_src->i_visible_width / p_fmt_src->i_visible_height;
         const double dst_ratio = (double)p_fmt_dst->i_visible_width / p_fmt_dst->i_visible_height;
-        ass_set_aspect_ratio( p_sys->p_renderer, dst_ratio / src_ratio, 1 );
+        ass_set_pixel_aspect( p_sys->p_renderer, dst_ratio / src_ratio );
         p_sys->fmt = fmt;
     }
 
