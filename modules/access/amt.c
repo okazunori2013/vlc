@@ -588,7 +588,7 @@ static block_t *BlockAMT(stream_t *p_access, bool *restrict eof)
     if( sys->tryAMT )
     {
         /* AMT is a wrapper for UDP streams, so recv is used. */
-        len = recv( sys->sAMT, pkt->p_buffer, sys->mtu + tunnel, 0 );
+        len = recv( sys->sAMT, (char *)pkt->p_buffer, sys->mtu + tunnel, 0 );
 
         /* Check for the integrity of the received AMT packet */
         if( len < 0 || *(pkt->p_buffer) != AMT_MULT_DATA )
