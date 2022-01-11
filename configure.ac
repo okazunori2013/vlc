@@ -303,7 +303,19 @@ int foo() { return my_array[0]; }
       AC_MSG_RESULT([yes])
       VLC_ADD_LIBS([libvlccore], [-lsynchronization])
     ])
-    AC_DEFINE([_WIN32_IE], [0x0600], [Define to '0x0600' for IE 6.0 (and shell) APIs.])
+    AC_PREPROC_IFELSE([AC_LANG_PROGRAM(
+      [[#ifdef _WIN32_IE
+       # error _WIN32_IE already defined
+       #else
+       # include <windows.h>
+       # if defined(_WIN32_IE) && _WIN32_IE >= 0x0600
+       #  error _WIN32_IE API high enough
+       # endif
+       #endif
+      ]],[[;]])
+    ],[
+      AC_DEFINE([_WIN32_IE], [0x0600], [Define to '0x0600' for IE 6.0 (and shell) APIs.])
+    ])
     AC_DEFINE([UNICODE], [1], [Define to 1 for Unicode (Wide Chars) APIs.])
     AC_DEFINE([_ISOC99_SOURCE], [1], [Extensions to ISO C89 from ISO C99.])
     AC_DEFINE([_ISOC11_SOURCE], [1], [Extensions to ISO C99 from ISO C11.])
