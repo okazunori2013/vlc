@@ -227,6 +227,6 @@ void SendRTCP (rtcp_sender_t *restrict rtcp, const block_t *rtp)
     SetDWBE (ptr + 24, rtcp->bytes);
     memcpy (ptr + 28 + 4, rtp->p_buffer + 8, 4); /* SDES SSRC */
 
-    if (send (rtcp->handle, ptr, rtcp->length, 0) == (ssize_t)rtcp->length)
+    if (send (rtcp->handle, (const char *)ptr, rtcp->length, 0) == (ssize_t)rtcp->length)
         rtcp->counter = 0;
 }
