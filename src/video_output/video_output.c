@@ -1647,8 +1647,8 @@ static int vout_Start(vout_thread_sys_t *vout, vlc_video_context *vctx, const vo
     vlc_mutex_unlock(&sys->window_lock);
 
     /* Setup the window size, protected by the display_lock */
-    dcfg.window_props.width = sys->window_width;
-    dcfg.window_props.height = sys->window_height;
+    dcfg.display.width = sys->window_width;
+    dcfg.display.height = sys->window_height;
 
     sys->display = vout_OpenWrapper(&vout->obj, &sys->private, sys->splitter_name, &dcfg,
                                     &sys->original, vctx);
@@ -2082,7 +2082,6 @@ int vout_Request(const vout_configuration_t *cfg, vlc_video_context *vctx, input
     {
         /* the window was not enabled, nor the display started */
         msg_Err(cfg->vout, "failed to enable window");
-        video_format_Clean(&original);
         vlc_mutex_unlock(&sys->window_lock);
         assert(sys->display == NULL);
         return -1;

@@ -75,29 +75,8 @@ void vout_display_GetDefaultDisplaySize(unsigned *width, unsigned *height,
                                         const video_format_t *source,
                                         const vout_display_cfg_t *cfg)
 {
-    bool from_source = true;
-    /* Requested by the user */
-    if (cfg->display.width != 0 && cfg->display.height != 0) {
-        *width  = cfg->display.width;
-        *height = cfg->display.height;
-    } else if (cfg->display.width != 0) {
-        *width  = cfg->display.width;
-        *height = (int64_t)source->i_visible_height * source->i_sar_den * cfg->display.width * cfg->display.sar.num /
-            source->i_visible_width / source->i_sar_num / cfg->display.sar.den;
-    } else if (cfg->display.height != 0) {
-        *width  = (int64_t)source->i_visible_width * source->i_sar_num * cfg->display.height * cfg->display.sar.den /
-            source->i_visible_height / source->i_sar_den / cfg->display.sar.num;
-        *height = cfg->display.height;
-    }
-    /* Size reported by the window module */
-    else if (cfg->window_props.width != 0 && cfg->window_props.height != 0) {
-        *width = cfg->window_props.width;
-        *height = cfg->window_props.height;
-        /* The dimensions are not initialized from the source format */
-        from_source = false;
-    }
     /* Use the original video size */
-    else if (source->i_sar_num >= source->i_sar_den) {
+    if (source->i_sar_num >= source->i_sar_den) {
         *width  = (int64_t)source->i_visible_width * source->i_sar_num * cfg->display.sar.den / source->i_sar_den / cfg->display.sar.num;
         *height = source->i_visible_height;
     } else {
@@ -108,7 +87,7 @@ void vout_display_GetDefaultDisplaySize(unsigned *width, unsigned *height,
     *width  = *width  * cfg->zoom.num / cfg->zoom.den;
     *height = *height * cfg->zoom.num / cfg->zoom.den;
 
-    if (from_source && ORIENT_IS_SWAP(source->orientation)) {
+    if (ORIENT_IS_SWAP(source->orientation)) {
         /* Apply the source orientation only if the dimensions are initialized
          * from the source format */
         unsigned store = *width;
@@ -122,11 +101,6 @@ void vout_display_PlacePicture(vout_display_place_t *place,
                                const video_format_t *source,
                                const vout_display_cfg_t *cfg)
 {
-    /* vout_display_PlacePicture() is called from vd plugins. They should not
-     * care about the initial window properties. */
-    assert(cfg->window_props.width == 0 && cfg->window_props.height == 0);
-
-    /* */
     memset(place, 0, sizeof(*place));
     if (cfg->display.width == 0 || cfg->display.height == 0)
         return;
@@ -142,14 +116,9 @@ void vout_display_PlacePicture(vout_display_place_t *place,
     if (cfg->is_display_filled) {
         display_width  = cfg->display.width;
         display_height = cfg->display.height;
-    } else {
-        vout_display_cfg_t cfg_tmp = *cfg;
-
-        cfg_tmp.display.width  = 0;
-        cfg_tmp.display.height = 0;
+    } else
         vout_display_GetDefaultDisplaySize(&display_width, &display_height,
-                                           source, &cfg_tmp);
-    }
+                                           source, cfg);
 
     const unsigned width  = source->i_visible_width;
     const unsigned height = source->i_visible_height;
@@ -677,16 +646,15 @@ vout_display_t *vout_display_New(vlc_object_t *parent,
     if (unlikely(osys == NULL))
         return NULL;
 
-    unsigned display_width, display_height;
-    vout_display_GetDefaultDisplaySize(&display_width, &display_height,
-                                       source, cfg);
-
     osys->cfg = *cfg;
-    /* The window size was used for the initial setup. Now it can be dropped in
-     * favor of the calculated display size. */
-    osys->cfg.display.width = display_width;
-    osys->cfg.display.height = display_height;
-    osys->cfg.window_props.width = osys->cfg.window_props.height = 0;
+
+    if (cfg->display.width == 0 || cfg->display.height == 0) {
+        /* Work around buggy window provider */
+        msg_Warn(parent, "window size missing");
+        vout_display_GetDefaultDisplaySize(&osys->cfg.display.width,
+                                           &osys->cfg.display.height,
+                                           source, cfg);
+    }
 
     osys->pool = NULL;
 

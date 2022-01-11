@@ -24,16 +24,6 @@
 # include "config.h"
 #endif
 
-/* Needed for many mingw macros. */
-#define COBJMACROS
-
-/* Avoid having GUIDs being defined as "extern". */
-#define INITGUID
-
-#ifndef STDCALL
-# define STDCALL __stdcall
-#endif
-
 #include <winapifamily.h>
 #undef WINAPI_FAMILY
 #define WINAPI_FAMILY WINAPI_FAMILY_DESKTOP_APP
@@ -43,14 +33,18 @@
 #include <vlc_common.h>
 #include <vlc_plugin.h>
 #include <vlc_codec.h>
-#include "../packetizer/h264_nal.h"
-#define _VIDEOINFOHEADER_
-#include <vlc_codecs.h>
+#include "hxxx_helper.h"
 
+#define COBJMACROS
+#include <initguid.h>
 #include <mfapi.h>
 #include <mftransform.h>
 #include <mferror.h>
 #include <mfobjects.h>
+
+
+#define _VIDEOINFOHEADER_
+#include <vlc_codecs.h>
 
 static int  Open(vlc_object_t *);
 static void Close(vlc_object_t *);
@@ -70,20 +64,6 @@ vlc_module_end()
 
 typedef struct
 {
-    HINSTANCE mfplat_dll;
-    HRESULT (STDCALL *fptr_MFTEnumEx)(GUID guidCategory, UINT32 Flags,
-                                 const MFT_REGISTER_TYPE_INFO *pInputType,
-                                 const MFT_REGISTER_TYPE_INFO *pOutputType,
-                                 IMFActivate ***pppMFTActivate, UINT32 *pcMFTActivate);
-    HRESULT (STDCALL *fptr_MFCreateSample)(IMFSample **ppIMFSample);
-    HRESULT (STDCALL *fptr_MFCreateMemoryBuffer)(DWORD cbMaxLength, IMFMediaBuffer **ppBuffer);
-    HRESULT (STDCALL *fptr_MFCreateAlignedMemoryBuffer)(DWORD cbMaxLength, DWORD fAlignmentFlags, IMFMediaBuffer **ppBuffer);
-} MFHandle;
-
-typedef struct
-{
-    MFHandle mf_handle;
-
     IMFTransform *mft;
 
     const GUID* major_type;
@@ -107,7 +87,8 @@ typedef struct
     IMFMediaType *output_type;
 
     /* H264 only. */
-    uint8_t nal_length_size;
+    struct hxxx_helper hh;
+    bool   b_xps_pushed; ///< (for xvcC) parameter sets pushed (SPS/PPS/VPS)
 } decoder_sys_t;
 
 static const int pi_channels_maps[9] =
@@ -131,20 +112,8 @@ static const int pi_channels_maps[9] =
 };
 
 /* Possibly missing from mingw headers */
-#ifndef MF_E_TRANSFORM_NEED_MORE_INPUT
-# define MF_E_TRANSFORM_NEED_MORE_INPUT _HRESULT_TYPEDEF_(0xc00d6d72)
-#endif
-
-#ifndef MF_E_TRANSFORM_STREAM_CHANGE
-# define MF_E_TRANSFORM_STREAM_CHANGE _HRESULT_TYPEDEF_(0xc00d6d61)
-#endif
-
 #ifndef MF_E_NO_EVENTS_AVAILABLE
 # define MF_E_NO_EVENTS_AVAILABLE _HRESULT_TYPEDEF_(0xC00D3E80L)
-#endif
-
-#ifndef MF_EVENT_FLAG_NO_WAIT
-# define MF_EVENT_FLAG_NO_WAIT 0x00000001
 #endif
 
 /*
@@ -358,7 +327,7 @@ static int SetInputType(decoder_t *p_dec, DWORD stream_id, IMFMediaType **result
         if (hr == MF_E_ATTRIBUTENOTFOUND)
         {
             hr = IMFMediaType_SetBlob(input_media_type, &MF_MT_USER_DATA,
-                                      (const UINT8*)p_dec->fmt_in.p_extra, p_dec->fmt_in.i_extra);
+                                      p_dec->fmt_in.p_extra, p_dec->fmt_in.i_extra);
             if (FAILED(hr))
                 goto error;
         }
@@ -515,7 +484,6 @@ error:
 static int AllocateInputSample(decoder_t *p_dec, DWORD stream_id, IMFSample** result, DWORD size)
 {
     decoder_sys_t *p_sys = p_dec->p_sys;
-    MFHandle *mf = &p_sys->mf_handle;
     HRESULT hr;
 
     *result = NULL;
@@ -528,12 +496,12 @@ static int AllocateInputSample(decoder_t *p_dec, DWORD stream_id, IMFSample** re
     if (FAILED(hr))
         goto error;
 
-    hr = mf->fptr_MFCreateSample(&input_sample);
+    hr = MFCreateSample(&input_sample);
     if (FAILED(hr))
         goto error;
 
     DWORD allocation_size = __MAX(input_info.cbSize, size);
-    hr = mf->fptr_MFCreateMemoryBuffer(allocation_size, &input_media_buffer);
+    hr = MFCreateMemoryBuffer(allocation_size, &input_media_buffer);
     if (FAILED(hr))
         goto error;
 
@@ -558,7 +526,6 @@ error:
 static int AllocateOutputSample(decoder_t *p_dec, DWORD stream_id, IMFSample **result)
 {
     decoder_sys_t *p_sys = p_dec->p_sys;
-    MFHandle *mf = &p_sys->mf_handle;
     HRESULT hr;
 
     *result = NULL;
@@ -584,7 +551,7 @@ static int AllocateOutputSample(decoder_t *p_dec, DWORD stream_id, IMFSample **r
     if ((output_info.dwFlags & expected_flags) != expected_flags)
         goto error;
 
-    hr = mf->fptr_MFCreateSample(&output_sample);
+    hr = MFCreateSample(&output_sample);
     if (FAILED(hr))
         goto error;
 
@@ -592,9 +559,9 @@ static int AllocateOutputSample(decoder_t *p_dec, DWORD stream_id, IMFSample **r
     DWORD allocation_size = output_info.cbSize;
     DWORD alignment = output_info.cbAlignment;
     if (alignment > 0)
-        hr = mf->fptr_MFCreateAlignedMemoryBuffer(allocation_size, alignment - 1, &output_media_buffer);
+        hr = MFCreateAlignedMemoryBuffer(allocation_size, alignment - 1, &output_media_buffer);
     else
-        hr = mf->fptr_MFCreateMemoryBuffer(allocation_size, &output_media_buffer);
+        hr = MFCreateMemoryBuffer(allocation_size, &output_media_buffer);
     if (FAILED(hr))
         goto error;
 
@@ -616,10 +583,30 @@ error:
 static int ProcessInputStream(decoder_t *p_dec, DWORD stream_id, block_t *p_block)
 {
     decoder_sys_t *p_sys = p_dec->p_sys;
-    HRESULT hr;
+    HRESULT hr = S_OK;
     IMFSample *input_sample = NULL;
 
-    if (AllocateInputSample(p_dec, stream_id, &input_sample, p_block->i_buffer))
+    block_t *p_xps_blocks = NULL;
+    DWORD alloc_size = p_block->i_buffer;
+
+    if (p_dec->fmt_in.i_codec == VLC_CODEC_H264)
+    {
+        /* in-place NAL to annex B conversion. */
+        p_block = hxxx_helper_process_block(&p_sys->hh, p_block);
+
+        if (p_sys->hh.i_input_nal_length_size && !p_sys->b_xps_pushed)
+        {
+            p_xps_blocks = hxxx_helper_get_extradata_block(&p_sys->hh);
+            if (p_xps_blocks)
+            {
+                size_t extrasize;
+                block_ChainProperties(p_xps_blocks, NULL, &extrasize, NULL);
+                alloc_size += extrasize;
+            }
+        }
+    }
+
+    if (AllocateInputSample(p_dec, stream_id, &input_sample, alloc_size))
         goto error;
 
     IMFMediaBuffer *input_media_buffer = NULL;
@@ -632,13 +619,11 @@ static int ProcessInputStream(decoder_t *p_dec, DWORD stream_id, block_t *p_bloc
     if (FAILED(hr))
         goto error;
 
-    memcpy(buffer_start, p_block->p_buffer, p_block->i_buffer);
-
-    if (p_dec->fmt_in.i_codec == VLC_CODEC_H264)
-    {
-        /* in-place NAL to annex B conversion. */
-        h264_AVC_to_AnnexB(buffer_start, p_block->i_buffer, p_sys->nal_length_size);
+    if (p_xps_blocks) {
+        buffer_start += block_ChainExtract(p_xps_blocks, buffer_start, alloc_size);
+        p_sys->b_xps_pushed = true;
     }
+    memcpy(buffer_start, p_block->p_buffer, p_block->i_buffer);
 
     hr = IMFMediaBuffer_Unlock(input_media_buffer);
     if (FAILED(hr))
@@ -657,17 +642,22 @@ static int ProcessInputStream(decoder_t *p_dec, DWORD stream_id, block_t *p_bloc
 
     hr = IMFTransform_ProcessInput(p_sys->mft, stream_id, input_sample, 0);
     if (FAILED(hr))
+    {
+        msg_Dbg(p_dec, "Failed to process input stream %lu (error 0x%lX)", stream_id, hr);
         goto error;
+    }
 
     IMFMediaBuffer_Release(input_media_buffer);
     IMFSample_Release(input_sample);
+    block_ChainRelease(p_xps_blocks);
 
     return VLC_SUCCESS;
 
 error:
-    msg_Err(p_dec, "Error in ProcessInputStream()");
+    msg_Err(p_dec, "Error in ProcessInputStream(). (hr=0x%lX)\n", hr);
     if (input_sample)
         IMFSample_Release(input_sample);
+    block_ChainRelease(p_xps_blocks);
     return VLC_EGENERIC;
 }
 
@@ -696,7 +686,7 @@ static void CopyPackedBufferToPicture(picture_t *p_pic, const uint8_t *p_src)
     }
 }
 
-static int ProcessOutputStream(decoder_t *p_dec, DWORD stream_id)
+static int ProcessOutputStream(decoder_t *p_dec, DWORD stream_id, bool *keep_reading)
 {
     decoder_sys_t *p_sys = p_dec->p_sys;
     HRESULT hr;
@@ -710,6 +700,11 @@ static int ProcessOutputStream(decoder_t *p_dec, DWORD stream_id)
         IMFCollection_Release(output_buffer.pEvents);
     /* Use the returned sample since it can be provided by the MFT. */
     IMFSample *output_sample = output_buffer.pSample;
+    IMFMediaBuffer *output_media_buffer = NULL;
+
+    *keep_reading = false;
+    if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT)
+        return VLC_SUCCESS;
 
     if (hr == S_OK)
     {
@@ -723,73 +718,105 @@ static int ProcessOutputStream(decoder_t *p_dec, DWORD stream_id)
         /* Convert from 100 nanoseconds unit to microseconds. */
         vlc_tick_t samp_time = VLC_TICK_FROM_MSFTIME(sample_time);
 
-        DWORD total_length = 0;
-        hr = IMFSample_GetTotalLength(output_sample, &total_length);
-        if (FAILED(hr))
+        DWORD output_count = 0;
+        hr = IMFSample_GetBufferCount(output_sample, &output_count);
+        if (unlikely(FAILED(hr)))
             goto error;
 
-        if (p_dec->fmt_in.i_cat == VIDEO_ES)
+        for (DWORD buf_index = 0; buf_index < output_count; buf_index++)
         {
-            if (decoder_UpdateVideoFormat(p_dec))
-                return VLC_SUCCESS;
-            picture = decoder_NewPicture(p_dec);
-            if (!picture)
-                return VLC_SUCCESS;
-
-            UINT32 interlaced = false;
-            hr = IMFSample_GetUINT32(output_sample, &MFSampleExtension_Interlaced, &interlaced);
-            picture->b_progressive = !interlaced;
-
-            picture->date = samp_time;
-        }
-        else
-        {
-            if (decoder_UpdateAudioFormat(p_dec))
-                goto error;
-            if (p_dec->fmt_out.audio.i_bitspersample == 0 || p_dec->fmt_out.audio.i_channels == 0)
-                goto error;
-            int samples = total_length / (p_dec->fmt_out.audio.i_bitspersample * p_dec->fmt_out.audio.i_channels / 8);
-            aout_buffer = decoder_NewAudioBuffer(p_dec, samples);
-            if (!aout_buffer)
-                return VLC_SUCCESS;
-            if (aout_buffer->i_buffer < total_length)
-                goto error;
-
-            aout_buffer->i_pts = samp_time;
-        }
-
-        IMFMediaBuffer *output_media_buffer = NULL;
-        hr = IMFSample_GetBufferByIndex(output_sample, 0, &output_media_buffer);
-
-        BYTE *buffer_start;
-        hr = IMFMediaBuffer_Lock(output_media_buffer, &buffer_start, NULL, NULL);
-        if (FAILED(hr))
-            goto error;
-
-        if (p_dec->fmt_in.i_cat == VIDEO_ES)
-            CopyPackedBufferToPicture(picture, buffer_start);
-        else
-            memcpy(aout_buffer->p_buffer, buffer_start, total_length);
-
-        hr = IMFMediaBuffer_Unlock(output_media_buffer);
-        IMFSample_Release(output_media_buffer);
-        if (FAILED(hr))
-            goto error;
-
-        if (p_sys->output_sample)
-        {
-            /* Sample is not provided by the MFT: clear its content. */
-            hr = IMFMediaBuffer_SetCurrentLength(output_media_buffer, 0);
+            hr = IMFSample_GetBufferByIndex(output_sample, buf_index, &output_media_buffer);
             if (FAILED(hr))
                 goto error;
+
+            if (p_dec->fmt_in.i_cat == VIDEO_ES)
+            {
+                if (decoder_UpdateVideoFormat(p_dec))
+                    return VLC_SUCCESS;
+                picture = decoder_NewPicture(p_dec);
+                if (!picture)
+                    return VLC_SUCCESS;
+
+                UINT32 interlaced = false;
+                hr = IMFSample_GetUINT32(output_sample, &MFSampleExtension_Interlaced, &interlaced);
+                if (FAILED(hr))
+                    picture->b_progressive = true;
+                else
+                    picture->b_progressive = !interlaced;
+
+                picture->date = samp_time;
+
+                BYTE *buffer_start;
+                hr = IMFMediaBuffer_Lock(output_media_buffer, &buffer_start, NULL, NULL);
+                if (FAILED(hr))
+                    goto error;
+
+                CopyPackedBufferToPicture(picture, buffer_start);
+
+                hr = IMFMediaBuffer_Unlock(output_media_buffer);
+                if (FAILED(hr))
+                    goto error;
+
+                decoder_QueueVideo(p_dec, picture);
+            }
+            else
+            {
+                if (decoder_UpdateAudioFormat(p_dec))
+                    goto error;
+                if (p_dec->fmt_out.audio.i_bitspersample == 0 || p_dec->fmt_out.audio.i_channels == 0)
+                    goto error;
+
+                DWORD total_length = 0;
+                hr = IMFSample_GetTotalLength(output_sample, &total_length);
+                if (FAILED(hr))
+                    goto error;
+
+                int samples = total_length / (p_dec->fmt_out.audio.i_bitspersample * p_dec->fmt_out.audio.i_channels / 8);
+                aout_buffer = decoder_NewAudioBuffer(p_dec, samples);
+                if (!aout_buffer)
+                    return VLC_SUCCESS;
+                if (aout_buffer->i_buffer < total_length)
+                    goto error;
+
+                aout_buffer->i_pts = samp_time;
+
+                BYTE *buffer_start;
+                hr = IMFMediaBuffer_Lock(output_media_buffer, &buffer_start, NULL, NULL);
+                if (FAILED(hr))
+                    goto error;
+
+                memcpy(aout_buffer->p_buffer, buffer_start, total_length);
+
+                hr = IMFMediaBuffer_Unlock(output_media_buffer);
+                if (FAILED(hr))
+                    goto error;
+
+                decoder_QueueAudio(p_dec, aout_buffer);
+            }
+
+            if (p_sys->output_sample)
+            {
+                /* Sample is not provided by the MFT: clear its content. */
+                hr = IMFMediaBuffer_SetCurrentLength(output_media_buffer, 0);
+                if (FAILED(hr))
+                    goto error;
+            }
+
+            IMFMediaBuffer_Release(output_media_buffer);
+            output_media_buffer = NULL;
         }
-        else
+
+        if (!p_sys->output_sample)
         {
             /* Sample is provided by the MFT: decrease refcount. */
             IMFSample_Release(output_sample);
         }
+
+        *keep_reading = true;
+        return VLC_SUCCESS;
     }
-    else if (hr == MF_E_TRANSFORM_STREAM_CHANGE || hr == MF_E_TRANSFORM_TYPE_NOT_SET)
+
+    if (hr == MF_E_TRANSFORM_STREAM_CHANGE || hr == MF_E_TRANSFORM_TYPE_NOT_SET)
     {
         if (p_sys->output_type)
             IMFMediaType_Release(p_sys->output_type);
@@ -798,32 +825,24 @@ static int ProcessOutputStream(decoder_t *p_dec, DWORD stream_id)
 
         /* Reallocate output sample. */
         if (p_sys->output_sample)
+        {
             IMFSample_Release(p_sys->output_sample);
-        p_sys->output_sample = NULL;
-        if (AllocateOutputSample(p_dec, 0, &p_sys->output_sample))
+            p_sys->output_sample = NULL;
+        }
+        if (AllocateOutputSample(p_dec, p_sys->output_stream_id, &p_sys->output_sample))
             goto error;
+        // there's an output ready, keep trying
+        *keep_reading = hr == MF_E_TRANSFORM_STREAM_CHANGE;
         return VLC_SUCCESS;
     }
-    else if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT)
-    {
-        return VLC_SUCCESS;
-    }
-    else /* An error not listed above occurred */
-    {
-        msg_Err(p_dec, "Unexpected error in IMFTransform::ProcessOutput: %#lx",
-                hr);
-        goto error;
-    }
 
-    if (p_dec->fmt_in.i_cat == VIDEO_ES)
-        decoder_QueueVideo(p_dec, picture);
-    else
-        decoder_QueueAudio(p_dec, aout_buffer);
-
-    return VLC_SUCCESS;
+    /* An error not listed above occurred */
+    msg_Dbg(p_dec, "Failed to process output stream %lu (error 0x%lX)", stream_id, hr);
 
 error:
     msg_Err(p_dec, "Error in ProcessOutputStream()");
+    if (output_media_buffer)
+        IMFMediaBuffer_Release(output_media_buffer);
     if (picture)
         picture_Release(picture);
     if (aout_buffer)
@@ -831,25 +850,47 @@ error:
     return VLC_EGENERIC;
 }
 
+static void Flush(decoder_t *p_dec)
+{
+    decoder_sys_t *p_sys = p_dec->p_sys;
+    HRESULT hr;
+
+    hr = IMFTransform_ProcessMessage(p_sys->mft, MFT_MESSAGE_COMMAND_FLUSH, 0);
+}
+
 static int DecodeSync(decoder_t *p_dec, block_t *p_block)
 {
     decoder_sys_t *p_sys = p_dec->p_sys;
 
-    if (!p_block) /* No Drain */
-        return VLCDEC_SUCCESS;
-
-    if (p_block->i_flags & (BLOCK_FLAG_CORRUPTED))
+    if (p_block && p_block->i_flags & (BLOCK_FLAG_CORRUPTED))
     {
         block_Release(p_block);
         return VLCDEC_SUCCESS;
     }
 
+    if (p_block == NULL)
+    {
+        HRESULT hr;
+        hr = IMFTransform_ProcessMessage(p_sys->mft, MFT_MESSAGE_COMMAND_DRAIN, 0);
+        if (FAILED(hr))
+            return VLC_EGENERIC;
+    }
+
     /* Drain the output stream before sending the input packet. */
-    if (ProcessOutputStream(p_dec, p_sys->output_stream_id))
+    bool keep_reading;
+    int err;
+    do {
+        err = ProcessOutputStream(p_dec, p_sys->output_stream_id, &keep_reading);
+    } while (err == VLC_SUCCESS && keep_reading);
+    if (err != VLC_SUCCESS)
         goto error;
-    if (ProcessInputStream(p_dec, p_sys->input_stream_id, p_block))
-        goto error;
-    block_Release(p_block);
+
+    if (p_block != NULL )
+    {
+        if (ProcessInputStream(p_dec, p_sys->input_stream_id, p_block))
+            goto error;
+        block_Release(p_block);
+    }
 
     return VLCDEC_SUCCESS;
 
@@ -908,7 +949,12 @@ static int DecodeAsync(decoder_t *p_dec, block_t *p_block)
     if (p_sys->pending_output_events > 0)
     {
         p_sys->pending_output_events -= 1;
-        if (ProcessOutputStream(p_dec, p_sys->output_stream_id))
+        bool keep_reading;
+        int err;
+        do {
+            err = ProcessOutputStream(p_dec, p_sys->output_stream_id, &keep_reading);
+        } while (err == VLC_SUCCESS && keep_reading);
+        if (err != VLC_SUCCESS)
             goto error;
     }
 
@@ -928,7 +974,12 @@ static int DecodeAsync(decoder_t *p_dec, block_t *p_block)
         if (p_sys->pending_output_events > 0)
         {
             p_sys->pending_output_events -= 1;
-            if (ProcessOutputStream(p_dec, p_sys->output_stream_id))
+            bool keep_reading;
+            int err;
+            do {
+                err = ProcessOutputStream(p_dec, p_sys->output_stream_id, &keep_reading);
+            } while (err == VLC_SUCCESS && keep_reading);
+            if (err != VLC_SUCCESS)
                 goto error;
             break;
         }
@@ -1034,22 +1085,8 @@ static int InitializeMFT(decoder_t *p_dec)
         /* It's not an error if the following call fails. */
         IMFAttributes_SetUINT32(attributes, &CODECAPI_AVLowLatencyMode, true);
 
-        if (p_dec->fmt_in.i_extra)
-        {
-            if (h264_isavcC(p_dec->fmt_in.p_extra, p_dec->fmt_in.i_extra))
-            {
-                size_t i_buf;
-                uint8_t *buf = h264_avcC_to_AnnexB_NAL(p_dec->fmt_in.p_extra,
-                                                       p_dec->fmt_in.i_extra,
-                                                      &i_buf, &p_sys->nal_length_size);
-                if(buf)
-                {
-                    free(p_dec->fmt_in.p_extra);
-                    p_dec->fmt_in.p_extra = buf;
-                    p_dec->fmt_in.i_extra = i_buf;
-                }
-            }
-        }
+        hxxx_helper_init(&p_sys->hh, VLC_OBJECT(p_dec), p_dec->fmt_in.i_codec, 0, 0);
+        hxxx_helper_set_extra(&p_sys->hh, p_dec->fmt_in.p_extra, p_dec->fmt_in.i_extra);
     }
     return VLC_SUCCESS;
 
@@ -1069,28 +1106,27 @@ static void DestroyMFT(decoder_t *p_dec)
         IMFMediaType_Release(p_sys->input_type);
     if (p_sys->output_sample)
     {
-        IMFMediaBuffer *output_media_buffer = NULL;
-        HRESULT hr = IMFSample_GetBufferByIndex(p_sys->output_sample, 0, &output_media_buffer);
-        if (SUCCEEDED(hr))
-            IMFSample_Release(output_media_buffer);
-        IMFSample_Release(p_sys->output_sample);
+        IMFSample_RemoveAllBuffers(p_sys->output_sample);
     }
     if (p_sys->output_type)
         IMFMediaType_Release(p_sys->output_type);
     if (p_sys->mft)
         IMFTransform_Release(p_sys->mft);
 
+    if (p_dec->fmt_in.i_codec == VLC_CODEC_H264)
+        hxxx_helper_clean(&p_sys->hh);
+
     p_sys->event_generator = NULL;
     p_sys->input_type = NULL;
-    p_sys->output_sample = NULL;
     p_sys->output_type = NULL;
     p_sys->mft = NULL;
+
+    MFShutdown();
 }
 
 static int FindMFT(decoder_t *p_dec)
 {
     decoder_sys_t *p_sys = p_dec->p_sys;
-    MFHandle *mf = &p_sys->mf_handle;
     HRESULT hr;
 
     /* Try to create a MFT using MFTEnumEx. */
@@ -1118,15 +1154,15 @@ static int FindMFT(decoder_t *p_dec)
 
     UINT32 flags = MFT_ENUM_FLAG_SORTANDFILTER | MFT_ENUM_FLAG_LOCALMFT
                  | MFT_ENUM_FLAG_SYNCMFT | MFT_ENUM_FLAG_ASYNCMFT
-                 | MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_TRANSCODE_ONLY;
+                 | MFT_ENUM_FLAG_HARDWARE;
     MFT_REGISTER_TYPE_INFO input_type = { *p_sys->major_type, *p_sys->subtype };
     IMFActivate **activate_objects = NULL;
     UINT32 activate_objects_count = 0;
-    hr = mf->fptr_MFTEnumEx(category, flags, &input_type, NULL, &activate_objects, &activate_objects_count);
+    hr = MFTEnumEx(category, flags, &input_type, NULL, &activate_objects, &activate_objects_count);
     if (FAILED(hr))
         return VLC_EGENERIC;
 
-    msg_Dbg(p_dec, "Found %d available MFT module(s)", activate_objects_count);
+    msg_Dbg(p_dec, "Found %d available MFT module(s) for %4.4s", activate_objects_count, (const char*)&p_dec->fmt_in.i_codec);
     if (activate_objects_count == 0)
         return VLC_EGENERIC;
 
@@ -1141,6 +1177,8 @@ static int FindMFT(decoder_t *p_dec)
 
         if (InitializeMFT(p_dec) == VLC_SUCCESS)
         {
+            for (++i; i < activate_objects_count; ++i)
+                IMFActivate_Release(activate_objects[i]);
             CoTaskMemFree(activate_objects);
             return VLC_SUCCESS;
         }
@@ -1150,25 +1188,12 @@ static int FindMFT(decoder_t *p_dec)
     return VLC_EGENERIC;
 }
 
-static int LoadMFTLibrary(MFHandle *mf)
+static int LoadMFTLibrary()
 {
-#if defined(VLC_WINSTORE_APP) || __MINGW64_VERSION_MAJOR < 6
-    mf->mfplat_dll = LoadLibrary(TEXT("mfplat.dll"));
-    if (!mf->mfplat_dll)
+    HRESULT hr = MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET);
+    if (FAILED(hr))
         return VLC_EGENERIC;
 
-    mf->fptr_MFTEnumEx = (void*)GetProcAddress(mf->mfplat_dll, "MFTEnumEx");
-    mf->fptr_MFCreateSample = (void*)GetProcAddress(mf->mfplat_dll, "MFCreateSample");
-    mf->fptr_MFCreateMemoryBuffer = (void*)GetProcAddress(mf->mfplat_dll, "MFCreateMemoryBuffer");
-    mf->fptr_MFCreateAlignedMemoryBuffer = (void*)GetProcAddress(mf->mfplat_dll, "MFCreateAlignedMemoryBuffer");
-    if (!mf->fptr_MFTEnumEx || !mf->fptr_MFCreateSample || !mf->fptr_MFCreateMemoryBuffer || !mf->fptr_MFCreateAlignedMemoryBuffer)
-        return VLC_EGENERIC;
-#else
-    mf->fptr_MFTEnumEx = &MFTEnumEx;
-    mf->fptr_MFCreateSample = &MFCreateSample;
-    mf->fptr_MFCreateMemoryBuffer = &MFCreateMemoryBuffer;
-    mf->fptr_MFCreateAlignedMemoryBuffer = &MFCreateAlignedMemoryBuffer;
-#endif
 
     return VLC_SUCCESS;
 }
@@ -1188,10 +1213,11 @@ static int Open(vlc_object_t *p_this)
         return VLC_EGENERIC;
     }
 
-    if (LoadMFTLibrary(&p_sys->mf_handle))
+    if (LoadMFTLibrary())
     {
         msg_Err(p_dec, "Failed to load MFT library.");
-        goto error;
+        free(p_sys);
+        return VLC_EGENERIC;
     }
 
     if (FindMFT(p_dec))
@@ -1201,10 +1227,11 @@ static int Open(vlc_object_t *p_this)
     }
 
     /* Only one output sample is needed, we can allocate one and reuse it. */
-    if (AllocateOutputSample(p_dec, 0, &p_sys->output_sample))
+    if (AllocateOutputSample(p_dec, p_sys->output_stream_id, &p_sys->output_sample))
         goto error;
 
     p_dec->pf_decode = p_sys->is_async ? DecodeAsync : DecodeSync;
+    p_dec->pf_flush = p_sys->is_async ? NULL : Flush;
 
     return VLC_SUCCESS;
 
@@ -1217,12 +1244,8 @@ static void Close(vlc_object_t *p_this)
 {
     decoder_t *p_dec = (decoder_t *)p_this;
     decoder_sys_t *p_sys = p_dec->p_sys;
-    MFHandle *mf = &p_sys->mf_handle;
 
     DestroyMFT(p_dec);
-
-    if (mf->mfplat_dll)
-        FreeLibrary(mf->mfplat_dll);
 
     free(p_sys);
 
