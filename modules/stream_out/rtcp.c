@@ -193,7 +193,7 @@ void CloseRTCP (rtcp_sender_t *rtcp)
 
     /* We are THE sender, so we are more important than anybody else, so
      * we can afford not to check bandwidth constraints here. */
-    send (rtcp->handle, rtcp->payload, rtcp->length, 0);
+    send (rtcp->handle, (const char *)rtcp->payload, rtcp->length, 0);
     net_Close (rtcp->handle);
     free (rtcp);
 }
