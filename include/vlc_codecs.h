@@ -186,7 +186,9 @@ ATTR_PACKED
 /* WAVE format wFormatTag IDs */
 /* See http://msdn.microsoft.com/en-us/library/aa904731%28v=vs.80%29.aspx */
 #define WAVE_FORMAT_UNKNOWN             0x0000 /* Microsoft Corporation */
+#ifndef WAVE_FORMAT_PCM
 #define WAVE_FORMAT_PCM                 0x0001 /* Microsoft Corporation */
+#endif
 #define WAVE_FORMAT_ADPCM               0x0002 /* Microsoft Corporation */
 #define WAVE_FORMAT_IEEE_FLOAT          0x0003 /* Microsoft Corporation */
 #define WAVE_FORMAT_ALAW                0x0006 /* Microsoft Corporation */
