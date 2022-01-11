@@ -136,7 +136,7 @@ static void *RunThread (void *self)
 
         vlc_list_foreach (p_session, &addr->sessions, node)
         {
-            send (addr->fd, p_session->data, p_session->length, 0);
+            send (addr->fd, (const char *)p_session->data, p_session->length, 0);
             deadline += vlc_tick_from_samples(addr->interval, addr->session_count);
 
             if (vlc_cond_timedwait(&addr->wait, &sap_mutex, deadline) == 0)
