@@ -1328,9 +1328,15 @@ static int  HttpCallback( httpd_file_sys_t *p_args,
 static void* ThreadSend( void *data )
 {
 #ifdef _WIN32
-# define ENOBUFS      WSAENOBUFS
-# define EAGAIN       WSAEWOULDBLOCK
-# define EWOULDBLOCK  WSAEWOULDBLOCK
+# ifndef ENOBUFS
+#  define ENOBUFS      WSAENOBUFS
+# endif
+# ifndef EAGAIN
+#   define EAGAIN       WSAEWOULDBLOCK
+# endif
+# ifndef EWOULDBLOCK
+#   define EWOULDBLOCK  WSAEWOULDBLOCK
+# endif
 #endif
     sout_stream_id_sys_t *id = data;
     vlc_tick_t i_caching = id->i_caching;
