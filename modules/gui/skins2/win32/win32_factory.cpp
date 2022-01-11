@@ -237,6 +237,8 @@ bool Win32Factory::init()
     datadir = config_GetSysPath(VLC_PKG_DATA_DIR, NULL);
     m_resourcePath.push_back( (std::string)datadir + "\\skins" );
     m_resourcePath.push_back( (std::string)datadir + "\\skins2" );
+    m_resourcePath.push_back( (std::string)datadir + "\\vlc\\skins");
+    m_resourcePath.push_back( (std::string)datadir + "\\vlc\\skins2");  
     m_resourcePath.push_back( (std::string)datadir + "\\share\\skins" );
     m_resourcePath.push_back( (std::string)datadir + "\\share\\skins2" );
     free( datadir );
