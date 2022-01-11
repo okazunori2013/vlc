@@ -84,7 +84,11 @@
  #define PRIo64 "llo"
  #undef PRIx64
  #define PRIx64 "llx"
+ #ifndef snprintf
+ #endif
+ #ifdef vsnprintf
  #define snprintf __mingw_snprintf
+ #endif
  #define vsnprintf __mingw_vsnprintf
  #define swprintf _snwprintf
 #endif
