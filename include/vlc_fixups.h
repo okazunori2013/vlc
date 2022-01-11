@@ -424,11 +424,14 @@ struct timespec {
 #endif
 
 #ifdef _WIN32
+#ifndef STRUCT_IOVEC_DEFINED
+#define STRUCT_IOVEC_DEFINED 1 
 struct iovec
 {
     void  *iov_base;
     size_t iov_len;
 };
+#endif 
 #define IOV_MAX 255
 struct msghdr
 {
