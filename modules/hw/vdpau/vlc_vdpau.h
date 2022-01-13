@@ -172,40 +172,6 @@ VdpStatus vdp_create_x11(void *dpy, int snum, vdp_t **vdpp, VdpDevice *devp);
  */
 void vdp_destroy_x11(vdp_t *);
 
-/* Instance reuse */
-
-/**
- * Finds an existing pair of VDPAU instance and VDPAU device matching the
- * specified X11 display and screen number from within the process-wide list.
- * If no existing instance corresponds, connect to the X11 server,
- * create a new pair of instance and device, and set the reference count to 1.
- * @param name X11 display name
- * @param snum X11 screen number
- * @param vdp memory location to hold the VDPAU instance pointer [OUT]
- * @param dev memory location to hold the VDPAU device handle [OUT]
- * @return VDP_STATUS_OK on success, otherwise a VDPAU error code.
- *
- * @note Use vdp_release_x11() to release the instance. <b>Do not use</b>
- * vdp_device_destroy() and/or vdp_destroy_x11() with vdp_get_x11().
- */
-VdpStatus vdp_get_x11(const char *name, int num, vdp_t **vdp, VdpDevice *dev);
-
-/**
- * Increases the reference count of a VDPAU instance created by vdp_get_x11().
- * @param vdp VDPAU instance (as returned by vdp_get_x11())
- * @param device location to store the VDPAU device corresponding to the
- *               VDPAU instance (or NULL) [OUT]
- * @return the first pameter, always succeeds.
- */
-vdp_t *vdp_hold_x11(vdp_t *vdp, VdpDevice *device);
-
-/**
- * Decreases the reference count of a VDPAU instance created by vdp_get_x11().
- * If it reaches zero, destroy the corresponding VDPAU device, then the VDPAU
- * instance and remove the pair from the process-wide list.
- */
-void vdp_release_x11(vdp_t *);
-
 /* VLC specifics */
 # include <stdatomic.h>
 # include <stdbool.h>
@@ -213,6 +179,11 @@ void vdp_release_x11(vdp_t *);
 # include <vlc_common.h>
 # include <vlc_fourcc.h>
 # include <vlc_picture.h>
+
+struct vlc_vdp_device {
+    vdp_t *vdp; /**< VDPAU driver instance */
+    VdpDevice device; /**< VDPAU device handle */
+};
 
 /** Converts VLC YUV format to VDPAU chroma type and YCbCr format */
 static inline
@@ -263,8 +234,6 @@ bool vlc_fourcc_to_vdp_ycc(vlc_fourcc_t fourcc,
 typedef struct vlc_vdp_video_frame
 {
     VdpVideoSurface surface;
-    VdpDevice device;
-    vdp_t *vdp;
     atomic_uintptr_t refs;
 } vlc_vdp_video_frame_t;
 
@@ -280,10 +249,7 @@ typedef struct vlc_vdp_video_field
 #define VDPAU_FIELD_FROM_PICCTX(pic_ctx)  \
     container_of((pic_ctx), vlc_vdp_video_field_t, context)
 
-typedef struct {
-    vdp_t              *vdp;
-    VdpDevice          device;
-} vdpau_decoder_device_t;
+typedef struct vlc_vdp_device vdpau_decoder_device_t;
 
 static inline vdpau_decoder_device_t *GetVDPAUOpaqueDevice(vlc_decoder_device *device)
 {
@@ -310,16 +276,21 @@ static inline vdpau_decoder_device_t *GetVDPAUOpaqueContext(vlc_video_context *v
 /**
  * Attaches a VDPAU video surface as context of a VLC picture.
  */
-VdpStatus vlc_vdp_video_attach(vdp_t *, VdpVideoSurface, vlc_video_context *, picture_t *);
+VdpStatus vlc_vdp_video_attach(struct vlc_video_context *, VdpVideoSurface,
+                               picture_t *);
 
 /**
  * Wraps a VDPAU video surface into a VLC picture context.
  */
-vlc_vdp_video_field_t *vlc_vdp_video_create(vdp_t *, VdpVideoSurface);
+vlc_vdp_video_field_t *vlc_vdp_video_create(struct vlc_video_context *,
+                                            VdpVideoSurface);
 
 static inline void vlc_vdp_video_destroy(vlc_vdp_video_field_t *f)
 {
+    struct vlc_video_context *vctx = f->context.vctx;
+
     f->context.destroy(&f->context);
+    vlc_video_context_Release(vctx);
 }
 
 /**
@@ -332,22 +303,16 @@ static inline vlc_vdp_video_field_t *vlc_vdp_video_copy(
     return VDPAU_FIELD_FROM_PICCTX(fold->context.copy(&fold->context));
 }
 
-/**
- * Clone a VPD field based picture context that contains a video context
- */
-picture_context_t *VideoSurfaceCloneWithContext(picture_context_t *);
-
 typedef struct vlc_vdp_output_surface
 {
     VdpOutputSurface surface;
-    VdpDevice device;
-    vdp_t *vdp;
+    struct vlc_video_context *vctx;
     ptrdiff_t gl_nv_surface;
 } vlc_vdp_output_surface_t;
 
 struct picture_pool_t;
 
-struct picture_pool_t *vlc_vdp_output_pool_create(vdpau_decoder_device_t *,
+struct picture_pool_t *vlc_vdp_output_pool_create(struct vlc_video_context *,
                                                   VdpRGBAFormat,
                                                   const video_format_t *,
                                                   unsigned count);

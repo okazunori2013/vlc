@@ -36,7 +36,6 @@
 #include <vlc_fourcc.h>
 #include <vlc_picture.h>
 #include <vlc_codec.h>
-#include <vlc_xlib.h>
 #include "vlc_vdpau.h"
 #include "../../codec/avcodec/va.h"
 
@@ -47,13 +46,8 @@ typedef struct
     uint32_t width;
     uint32_t height;
     vlc_video_context *vctx;
+    vlc_vdp_video_field_t *pool[];
 } vlc_va_sys_t;
-
-static inline vlc_vdp_video_field_t **GetVDPAUContextPrivate(vlc_video_context *vctx)
-{
-    return (vlc_vdp_video_field_t **)
-        vlc_video_context_GetPrivate( vctx, VLC_VIDEO_CONTEXT_VDPAU );
-}
 
 static vlc_vdp_video_field_t *CreateSurface(vlc_va_t *va, vdpau_decoder_device_t *vdpau_decoder)
 {
@@ -70,7 +64,7 @@ static vlc_vdp_video_field_t *CreateSurface(vlc_va_t *va, vdpau_decoder_device_t
         return NULL;
     }
 
-    vlc_vdp_video_field_t *field = vlc_vdp_video_create(vdpau_decoder->vdp, surface);
+    vlc_vdp_video_field_t *field = vlc_vdp_video_create(sys->vctx, surface);
     if (unlikely(field == NULL))
         vdp_video_surface_destroy(vdpau_decoder->vdp, surface);
     return field;
@@ -79,9 +73,8 @@ static vlc_vdp_video_field_t *CreateSurface(vlc_va_t *va, vdpau_decoder_device_t
 static vlc_vdp_video_field_t *GetSurface(vlc_va_sys_t *sys)
 {
     vlc_vdp_video_field_t *f;
-    vlc_vdp_video_field_t **pool = GetVDPAUContextPrivate(sys->vctx);
 
-    for (unsigned i = 0; (f = pool[i]) != NULL; i++)
+    for (unsigned i = 0; (f = sys->pool[i]) != NULL; i++)
     {
         uintptr_t expected = 1;
 
@@ -118,9 +111,6 @@ static int Lock(vlc_va_t *va, picture_t *pic, AVCodecContext *ctx, AVFrame *fram
     if (field == NULL)
         return VLC_ENOMEM;
 
-    field->context.copy = VideoSurfaceCloneWithContext;
-    field->context.vctx = vlc_video_context_Hold(sys->vctx);
-
     pic->context = &field->context;
     frame->data[3] = (void *)(uintptr_t)field->frame->surface;
     return VLC_SUCCESS;
@@ -130,6 +120,9 @@ static void Close(vlc_va_t *va)
 {
     vlc_va_sys_t *sys = va->sys;
 
+    for (size_t i = 0; sys->pool[i] != NULL; i++)
+        vlc_vdp_video_destroy(sys->pool[i]);
+
     vlc_video_context_Release(sys->vctx);
     if (sys->hwaccel_context)
         av_free(sys->hwaccel_context);
@@ -138,15 +131,8 @@ static void Close(vlc_va_t *va)
 
 static const struct vlc_va_operations ops = { Lock, Close, };
 
-static void DestroyVDPAUVideoContext(void *private)
-{
-    vlc_vdp_video_field_t **pool = private;
-    for (unsigned i = 0; pool[i] != NULL; i++)
-        vlc_vdp_video_destroy(pool[i]);
-}
-
 const struct vlc_video_context_operations vdpau_vctx_ops = {
-    DestroyVDPAUVideoContext,
+    NULL,
 };
 
 static int Open(vlc_va_t *va, AVCodecContext *avctx, enum AVPixelFormat hwfmt, const AVPixFmtDescriptor *desc,
@@ -182,12 +168,6 @@ static int Open(vlc_va_t *va, AVCodecContext *avctx, enum AVPixelFormat hwfmt, c
             return VLC_EGENERIC;
     }
 
-    if (!vlc_xlib_init(VLC_OBJECT(va)))
-    {
-        msg_Err(va, "Xlib is required for VDPAU");
-        return VLC_EGENERIC;
-    }
-
     unsigned codec_refs;
     switch (avctx->codec_id)
     {
@@ -204,21 +184,21 @@ static int Open(vlc_va_t *va, AVCodecContext *avctx, enum AVPixelFormat hwfmt, c
             codec_refs = 2;
             break;
     }
+
     const unsigned refs = codec_refs + 2 * avctx->thread_count + 5;
-    vlc_va_sys_t *sys = malloc(sizeof (*sys));
+    size_t extra = (refs + 1) * sizeof (vlc_vdp_video_field_t *);
+
+    vlc_va_sys_t *sys = malloc(sizeof (*sys) + extra);
     if (unlikely(sys == NULL))
        return VLC_ENOMEM;
 
-    sys->vctx = vlc_video_context_Create( dec_device, VLC_VIDEO_CONTEXT_VDPAU,
-                                           (refs + 1) * sizeof (vlc_vdp_video_field_t *),
-                                          &vdpau_vctx_ops );
+    sys->vctx = vlc_video_context_Create(dec_device, VLC_VIDEO_CONTEXT_VDPAU,
+                                         0, &vdpau_vctx_ops);
     if (sys->vctx == NULL)
     {
         free(sys);
         return VLC_ENOMEM;
     }
-
-    vlc_vdp_video_field_t **pool = GetVDPAUContextPrivate(sys->vctx);
 
     sys->type = type;
     sys->width = width;
@@ -241,22 +221,19 @@ static int Open(vlc_va_t *va, AVCodecContext *avctx, enum AVPixelFormat hwfmt, c
     unsigned i = 0;
     while (i < refs)
     {
-        pool[i] = CreateSurface(va, vdpau_decoder);
-        if (pool[i] == NULL)
+        sys->pool[i] = CreateSurface(va, vdpau_decoder);
+        if (sys->pool[i] == NULL)
             break;
         i++;
     }
-    pool[i] = NULL;
+    sys->pool[i] = NULL;
 
     if (i < refs)
     {
         msg_Err(va, "not enough video RAM");
-        goto error;
+        Close(va);
+        return VLC_ENOMEM;
     }
-
-    const char *infos;
-    if (vdp_get_information_string(vdpau_decoder->vdp, &infos) == VDP_STATUS_OK)
-        msg_Info(va, "Using %s", infos);
 
     *vtcx_out = sys->vctx;
     va->ops = &ops;
