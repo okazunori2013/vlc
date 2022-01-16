@@ -40,11 +40,11 @@ T.Control {
 
     // Settings
 
-    width: Math.max(view.width, content.implicitWidth)
+    width: Math.max(view.width, content.implicitWidth) + root.sectionWidth
 
     height: root.rowHeight
 
-    leftPadding: Math.max(0, view.width - root.usedRowSpace) / 2
+    leftPadding: Math.max(0, view.width - root.usedRowSpace) / 2 + root.sectionWidth
 
     hoverEnabled: true
     
@@ -102,19 +102,20 @@ T.Control {
             onPressed: _modifiersOnLastPress = mouse.modifiers
 
             onClicked: {
-                if (mouse.button === Qt.LeftButton
-                    ||
-                    selectionDelegateModel.isSelected(root.model.index(index, 0)) == false) {
+                if ((mouse.button === Qt.LeftButton)
+                        || !selectionDelegateModel.isSelected(root.model.index(index, 0))) {
 
-                    selectionDelegateModel.updateSelection(mouse.modifiers, view.currentIndex, index);
+                    selectionDelegateModel.updateSelection(mouse.modifiers, view.currentIndex, index)
 
-                    view.currentIndex = index;
+                    view.positionViewAtIndex(index, ListView.Contain)
 
-                    delegate.forceActiveFocus();
+                    view.currentIndex = index
+
+                    delegate.forceActiveFocus(Qt.MouseFouseReason)
                 }
 
                 if (mouse.button === Qt.RightButton)
-                    root.rightClick(delegate, rowModel, hoverArea.mapToGlobal(mouse.x, mouse.y));
+                    root.rightClick(delegate, rowModel, hoverArea.mapToGlobal(mouse.x, mouse.y))
             }
 
             onPositionChanged: {

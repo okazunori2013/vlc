@@ -1044,14 +1044,6 @@ static const char* const ppsz_restore_playback_desc[] = {
     "This allows you to select the order in which VLC will choose its " \
     "packetizers."  )
 
-#define MUX_TEXT N_("Mux module")
-#define MUX_LONGTEXT N_( \
-    "This is a legacy entry to let you configure mux modules")
-
-#define ACCESS_OUTPUT_TEXT N_("Access output module")
-#define ACCESS_OUTPUT_LONGTEXT N_( \
-    "This is a legacy entry to let you configure access output modules")
-
 #define ANN_SAPINTV_TEXT N_("SAP announcement interval")
 #define ANN_SAPINTV_LONGTEXT N_( \
     "When the SAP flow control is disabled, " \
@@ -1601,7 +1593,7 @@ vlc_module_begin ()
               AUDIO_TIME_STRETCH_TEXT, AUDIO_TIME_STRETCH_LONGTEXT )
 
     set_subcategory( SUBCAT_AUDIO_AOUT )
-    add_module("aout", "audio output", NULL, AOUT_TEXT, AOUT_LONGTEXT)
+    add_module("aout", "audio output", "any", AOUT_TEXT, AOUT_LONGTEXT)
         change_short('A')
     add_string( "role", "video", ROLE_TEXT, ROLE_LONGTEXT )
         change_string_list( ppsz_roles, ppsz_roles_text )
@@ -1616,7 +1608,7 @@ vlc_module_begin ()
                AUDIO_VISUAL_TEXT, AUDIO_VISUAL_LONGTEXT)
 
     set_subcategory( SUBCAT_AUDIO_RESAMPLER )
-    add_module("audio-resampler", "audio resampler", NULL,
+    add_module("audio-resampler", "audio resampler", "any",
                AUDIO_RESAMPLER_TEXT, AUDIO_RESAMPLER_LONGTEXT)
 
 /* Video options */
@@ -1727,7 +1719,7 @@ vlc_module_begin ()
         change_safe()
 
     set_subcategory( SUBCAT_VIDEO_VOUT )
-    add_module("vout", "vout display", NULL, VOUT_TEXT, VOUT_LONGTEXT)
+    add_module("vout", "vout display", "any", VOUT_TEXT, VOUT_LONGTEXT)
         change_short('V')
 
     set_subcategory( SUBCAT_VIDEO_VFILTER )
@@ -1746,7 +1738,7 @@ vlc_module_begin ()
     add_bool( "spu", true, SPU_TEXT, SPU_LONGTEXT )
         change_safe ()
     add_bool( "osd", true, OSD_TEXT, OSD_LONGTEXT )
-    add_module("text-renderer", "text renderer", NULL,
+    add_module("text-renderer", "text renderer", "any",
                TEXTRENDERER_TEXT, TEXTRENDERER_LONGTEXT)
 
     set_section( N_("Subtitles") , NULL )
@@ -1987,9 +1979,9 @@ vlc_module_begin ()
 
 /* Decoder options */
     add_category_hint(N_("Input access and codecs"), CODEC_CAT_LONGTEXT)
-    set_subcategory( SUBCAT_INPUT_ACCESS )
 
-    add_module("access", "access", NULL, ACCESS_TEXT, ACCESS_LONGTEXT)
+    //set_subcategory( SUBCAT_INPUT_ACCESS )
+    add_obsolete_string("access") /* since 4.0.0 */
 
     set_subcategory( SUBCAT_INPUT_DEMUX )
 
@@ -1999,7 +1991,7 @@ vlc_module_begin ()
     //set_subcategory( SUBCAT_INPUT_ACODEC )
     set_subcategory( SUBCAT_INPUT_VCODEC )
 
-    add_string( "codec", NULL, CODEC_TEXT, CODEC_LONGTEXT )
+    add_string( "codec", "any", CODEC_TEXT, CODEC_LONGTEXT )
     add_bool( "hw-dec", true, HW_DEC_TEXT, HW_DEC_LONGTEXT )
     add_obsolete_string( "encoder" ) /* since 4.0.0 */
     add_module("dec-dev", "decoder device", "any", DEC_DEV_TEXT, DEC_DEV_LONGTEXT)
@@ -2038,11 +2030,9 @@ vlc_module_begin ()
     add_integer( "sap-interval", 5, ANN_SAPINTV_TEXT,
                                ANN_SAPINTV_LONGTEXT )
 
-    set_subcategory( SUBCAT_SOUT_MUX )
-    add_module("mux", "sout mux", NULL, MUX_TEXT, MUX_LONGTEXT)
+    add_obsolete_string("mux") /* since 0.5.0 (warning since 4.0) */
     set_subcategory( SUBCAT_SOUT_ACO )
-    add_module("access_output", "sout access", NULL,
-               ACCESS_OUTPUT_TEXT, ACCESS_OUTPUT_LONGTEXT)
+    add_obsolete_string("access_output") /* since 0.5.0 (warning since 4.0) */
     add_integer( "ttl", -1, TTL_TEXT, TTL_LONGTEXT )
     add_string( "miface", NULL, MIFACE_TEXT, MIFACE_LONGTEXT )
     add_integer( "dscp", 0, DSCP_TEXT, DSCP_LONGTEXT )
