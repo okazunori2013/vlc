@@ -395,8 +395,10 @@ libvaapi_plugin_la_SOURCES = \
 libvaapi_plugin_la_CPPFLAGS = $(AM_CPPFLAGS)
 libvaapi_plugin_la_CFLAGS = $(AM_CFLAGS) $(AVCODEC_CFLAGS)
 libvaapi_plugin_la_LIBADD = $(LIBVA_LIBS) $(AVCODEC_LIBS)
-if HAVE_AVCODEC_VAAPI
+if HAVE_AVCODEC
+if HAVE_VAAPI
 codec_LTLIBRARIES += libvaapi_plugin.la
+endif
 endif
 
 libd3d9_common_la_SOURCES = video_chroma/d3d9_fmt.c video_chroma/d3d9_fmt.h \
@@ -590,10 +592,13 @@ codec_LTLIBRARIES += libdmo_plugin.la
 endif
 endif
 
-libmft_plugin_la_SOURCES = codec/mft.c
+libmft_plugin_la_SOURCES = codec/mft.cpp
 if HAVE_WIN32
-libmft_plugin_la_LIBADD = $(LIBCOM) -luuid -lmfuuid -lmfplat libvlc_hxxxhelper.la
+libmft_plugin_la_LIBADD = $(LIBCOM) -luuid -lmfuuid -lmfplat libvlc_hxxxhelper.la libd3d11_common.la
 codec_LTLIBRARIES += libmft_plugin.la
+if HAVE_WINSTORE
+libmft_plugin_la_LIBADD += -ld3d11
+endif
 endif
 
 libgstdecode_plugin_la_SOURCES = codec/gstreamer/gstdecode.c \

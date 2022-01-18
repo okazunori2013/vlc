@@ -62,14 +62,17 @@ Popup {
         Slider {
             id: speedSlider
 
-            property bool _inhibitUpdate: false
+            // '_inhibitPlayerUpdate' is used to guard against double update
+            // initialize with true so that we don't update the Player till
+            // we initialize `value` property
+            property bool _inhibitPlayerUpdate: true
 
             from: 0.25
             to: 4
             clip: true
             implicitHeight: VLCStyle.heightBar_small
 
-            Navigation.parentItem: root
+            Navigation.parentItem: root.Navigation.parentItem
             Navigation.downItem: resetButton
             Keys.priority: Keys.AfterItem
             Keys.onPressed: Navigation.defaultKeyAction(event)
@@ -88,7 +91,7 @@ Popup {
                     width: speedSlider.visualPosition * parent.width
                     height: parent.height
                     radius: 2
-                    color: (speedSlider.activeFocus || speedSlider.pressed)
+                    color: (speedSlider.visualFocus || speedSlider.pressed)
                            ? root.colors.accent
                            : root.colors.text
                 }
@@ -100,19 +103,19 @@ Popup {
                 width: speedSlider.implicitHeight
                 height: speedSlider.implicitHeight
                 radius: speedSlider.implicitHeight
-                color: (speedSlider.activeFocus || speedSlider.pressed) ? root.colors.accent : root.colors.text
+                color: (speedSlider.visualFocus || speedSlider.pressed) ? root.colors.accent : root.colors.text
             }
 
             onValueChanged:  {
-                if (_inhibitUpdate)
+                if (_inhibitPlayerUpdate)
                     return
                 Player.rate = value
             }
 
             function _updateFromPlayer() {
-                _inhibitUpdate = true
+                _inhibitPlayerUpdate = true
                 value = Player.rate
-                _inhibitUpdate = false
+                _inhibitPlayerUpdate = false
             }
 
             Connections {
@@ -130,7 +133,7 @@ Popup {
 
             spacing: 0
 
-            Navigation.parentItem: root
+            Navigation.parentItem: root.Navigation.parentItem
             Navigation.upItem: speedSlider
 
             Widgets.IconControlButton {

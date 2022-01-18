@@ -103,7 +103,7 @@ FocusScope {
     property alias displaced: view.displaced
 
     property alias listScrollBar: view.listScrollBar
-    property alias listView: view.listView
+    property alias listView: view
 
     property alias displayMarginEnd: view.displayMarginEnd
 
@@ -139,7 +139,7 @@ FocusScope {
      * selectedGroup update itself after this event
      */
     onActiveFocusChanged: {
-        if (activeFocus == false || view.modelCount == 0)
+        if (activeFocus == false || view.count == 0)
             return;
 
         if (view.currentIndex == -1)
@@ -163,7 +163,7 @@ FocusScope {
     }
 
     function positionViewAtBeginning() {
-        view.listView.positionViewAtBeginning()
+        view.positionViewAtBeginning()
     }
 
     function _qtAvoidSectionUpdate() {
@@ -255,7 +255,7 @@ FocusScope {
             width: Math.max(view.width, root.usedRowSpace + root.sectionWidth)
             height: col.height
             color: headerColor
-            visible: view.modelCount > 0
+            visible: view.count > 0
             z: 3
 
             // with inline header positioning and for `root.header` which changes it's height after loading,

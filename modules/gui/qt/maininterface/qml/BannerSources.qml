@@ -58,14 +58,21 @@ FocusScope {
     }
 
     function search() {
-        searchBox.reqExpand()
+        searchBox.state = "expanded"
     }
 
     Binding {
-        target: !!contentModel ? contentModel : null
         property: "searchPattern"
         value: searchBox.searchPattern
         when: !!contentModel
+
+        Component.onCompleted: {
+            // restoreMode is only available in Qt >= 5.14
+            if ("restoreMode" in this)
+                this.restoreMode = Binding.RestoreBindingOrValue
+
+            target = Qt.binding(function() { return !!contentModel ? contentModel : null })
+        }
     }
 
     Widgets.AcrylicBackground {
@@ -282,7 +289,7 @@ FocusScope {
 
                                 onSortSelected: {
                                     if (contentModel !== undefined)
-                                        contentModel.sortCriteria = type
+                                        contentModel.sortCriteria = key
                                 }
 
                                 onSortOrderSelected: {
@@ -388,10 +395,8 @@ FocusScope {
 
                             Widgets.SearchBox {
                                 id: searchBox
-                                visible: root.contentModel !== undefined
-                                enabled: visible
+                                visible: !!root.contentModel
                                 height: VLCStyle.bannerButton_height
-                                width: searchBox.implicitWith
                                 buttonWidth: VLCStyle.bannerButton_width
                             }
 
