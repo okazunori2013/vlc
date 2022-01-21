@@ -51,6 +51,12 @@
 
 # define HAVE_AVUTIL_CODEC_ATTACHMENT 1
 
+#if LIBAVFORMAT_VERSION_CHECK(59, 0, 100)
+# define AVF_MAYBE_CONST const
+#else
+# define AVF_MAYBE_CONST
+#endif
+
 struct avformat_track_s
 {
     es_out_id_t *p_es;
@@ -63,7 +69,7 @@ struct avformat_track_s
  *****************************************************************************/
 typedef struct
 {
-    AVInputFormat  *fmt;
+    AVF_MAYBE_CONST AVInputFormat *fmt;
     AVFormatContext *ic;
 
     struct avformat_track_s *tracks;
@@ -221,7 +227,8 @@ static void FindStreamInfo( demux_t *p_demux, AVDictionary *options )
 }
 
 static int avformat_ProbeDemux( vlc_object_t *p_this,
-                                AVInputFormat **pp_fmt, const char *psz_url )
+                                AVF_MAYBE_CONST AVInputFormat **pp_fmt,
+                                const char *psz_url )
 {
     demux_t       *p_demux = (demux_t*)p_this;
     AVProbeData   pd = { 0 };
@@ -316,7 +323,7 @@ int avformat_OpenDemux( vlc_object_t *p_this )
 {
     demux_t       *p_demux = (demux_t*)p_this;
     demux_sys_t   *p_sys;
-    AVInputFormat *fmt = NULL;
+    AVF_MAYBE_CONST AVInputFormat *fmt = NULL;
     vlc_tick_t    i_start_time = VLC_TICK_INVALID;
     bool          b_can_seek;
     const char    *psz_url;
@@ -813,7 +820,11 @@ static int Demux( demux_t *p_demux )
     }
 
     // handle extra data change, this can happen for FLV
+#if LIBAVUTIL_VERSION_MAJOR < 57
     int side_data_size;
+#else
+    size_t side_data_size;
+#endif
     uint8_t *side_data = av_packet_get_side_data( &pkt, AV_PKT_DATA_NEW_EXTRADATA, &side_data_size );
     if( side_data_size > 0 ) {
         // ignore new extradata which is the same as previous version
